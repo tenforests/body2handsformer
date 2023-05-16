@@ -310,7 +310,7 @@ class body2handformer(nn.Module):
 			self.mask_output = None
 
 		# network begin token
-		self.begin_token = nn.Parameter(torch.randn(1,1,hand_dim))
+		self.begin_token = nn.Parameter(torch.randn(1,1,hand_dim),requires_grad=True)
 		# 定义 embedding ver 1.0
 		if require_image:
 			self.img_embbding = nn.Sequential(nn.Dropout(dropout),
@@ -354,12 +354,14 @@ class body2handformer(nn.Module):
 			# b x frame x feacture
 			x = torch.concat((x,img_emd),dim = 2)
 		# hand seq 64->63
+		x = PositionalEncoding(x)
 		hand_input_in = hand_input[:,:hand_input.shape[1]-1,:]
 		batch_size = seq_input.shape[0]
 		begin_token = self.begin_token.expand(batch_size, -1, -1)
 		hand_emb = torch.concat((begin_token,hand_input_in),dim=1)
 		hand_emb = self.hand_embdding(hand_emb)
 		# add begin token
+		hand_emb = PositionalEncoding(hand_emb)
 
 		x = self.transformer.forward(x,hand_emb,memory_mask=self.mask_mem,tgt_mask=self.mask_output)
 		return x

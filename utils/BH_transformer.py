@@ -22,7 +22,7 @@ class BH_transformer(nn.Module):
 	
 	def build_net(self, body_input_dim=8*3,hand_input_dim=15*3,two_hand_dim=720,input_in_dim=360,out_dim=90,
 	       seq_length = 32,nhead =9, dropout = 0.5,num_encoder_layers =3,num_decoder_layers = 3, 
-		   dim_feedforward = 2048,):
+		   dim_feedforward = 2048):
 		
 # 定义 embedding 
 		
@@ -87,8 +87,8 @@ class BH_transformer(nn.Module):
         #body_output Q1
 		body_output=self.body_encoder(body_input_in)
 	
-		left_hand_output=self.left_hand_decoder(left_hand_input_in,body_output)
-		right_hand_output=self.right_hand_decoder(right_hand_input_in,body_output)
+		left_hand_output=self.left_hand_decoder(body_output,left_hand_input_in)
+		right_hand_output=self.right_hand_decoder(body_output,right_hand_input_in)
 	    
         #左右手级联
 		hand_input=torch.concat((left_hand_output,right_hand_output),dim=2)   #360D->720D
@@ -96,18 +96,18 @@ class BH_transformer(nn.Module):
 		hand_input_in=self.mlp(hand_input)              #720D->360D
 
 	    
-		x=self.two_hand_decoder(hand_input_in,body_input_in)
+		x=self.two_hand_decoder(body_input_in,hand_input_in)
 		out=self.out(x)
 	   
 		return out
 	
 
-S = BH_transformer()
-S.build_net()
-body_input=torch.randn((10,32,24))
-left_hand_input=torch.randn((10,32,45))
-right_hand_input=torch.randn((10,32,45))
+# S = BH_transformer()
+# S.build_net()
+# body_input=torch.randn((10,32,24))
+# left_hand_input=torch.randn((10,32,45))
+# right_hand_input=torch.randn((10,32,45))
 
-x = S.forward(body_input,left_hand_input,right_hand_input)
-print(x.shape)    
+# x = S.forward(body_input,left_hand_input,right_hand_input)
+# print(x.shape)    
 		

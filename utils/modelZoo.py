@@ -354,14 +354,14 @@ class body2handformer(nn.Module):
 			# b x frame x feacture
 			x = torch.concat((x,img_emd),dim = 2)
 		# hand seq 64->63
-		x = PositionalEncoding(x)
+		x = self.pos_embdding.forward(x)
 		hand_input_in = hand_input[:,:hand_input.shape[1]-1,:]
 		batch_size = seq_input.shape[0]
 		begin_token = self.begin_token.expand(batch_size, -1, -1)
 		hand_emb = torch.concat((begin_token,hand_input_in),dim=1)
 		hand_emb = self.hand_embdding(hand_emb)
 		# add begin token
-		hand_emb = PositionalEncoding(hand_emb)
+		hand_emb = self.pos_embdding.forward(hand_emb)
 
 		x = self.transformer.forward(x,hand_emb,memory_mask=self.mask_mem,tgt_mask=self.mask_output)
 		return x
@@ -373,6 +373,40 @@ class body2handformer(nn.Module):
 	# 	return x
 	
 
+	# 也使用transformer架构，判断是否是真实的手型序列、只使用编码器
+class body2handformer_discriminator(nn.Module):
+	def __init__(self):
+		super(body2handformer_discriminator, self).__init__()
+	def build_net(self, feature_out_dim=512, hand_dim = 252,
+	       seq_length = 64,nhead = 8, dropout = 0.1,
+		   num_encoder_layers =6, 
+		   feedforward_dim = 2048,pos_embedding = PositionalEncoding(512,0.1,64+1)):
+		self.cls_token  = nn.Parameter(torch.randn(1,1,hand_dim),requires_grad=True)
+		self.encoder_layer = nn.TransformerEncoderLayer(d_model=feature_out_dim, nhead=nhead,
+						    dim_feedforward=feedforward_dim,dropout=dropout)
+		self.encoder = nn.TransformerEncoder(self.encoder_layer,num_decoder_layers=num_encoder_layers)
+		self.pos_emb = pos_embedding
+		self.project = nn.Sequential(nn.Dropout(dropout),
+					nn.Linear(hand_dim, feature_out_dim),
+					nn.LeakyReLU(0.2, True),
+					nn.BatchNorm1d(seq_length, momentum=0.01)
+		)
+		# mse or bceloss
+		self.head = nn.Sequential(nn.Dropout(dropout),
+					nn.Linear(feature_out_dim, 1)
+		)
+		
+	def forward(self,xinput):
+		cls_token = self.cls_token.expand(xinput.shape[0],-1,-1)
+		xinput = self.project(input)
+		x = torch.cat((cls_token,xinput))
+		x = self.pos_emb.forward(x)
+		x = self.encoder.forward(x)
+		# 只对cls token作梯度下降
+		x = self.head(x[:,0,:])
+		return x
+
+#
 # class body2handformer_discriminator(nn.Module):
 # 	def __init__(self):
 # 		super(body2handformer_discriminator, self).__init__()

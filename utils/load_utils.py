@@ -33,6 +33,7 @@ def mean_std(feat, data, rot_idx):
     return mean, std
 
 
+
 ## helper for calculating standardization stats
 def calc_standard(train_X, train_Y, pipeline):
     rot_idx = -6
@@ -217,3 +218,36 @@ def save_results(paths, output, pipeline, base_path, tag=''):
                     for item in idk:
                         f.write("%s "%item)
                 ## DONE writing prediciton to file
+
+def frameCaculate(array_file,array_hand,array_body,frame_num:32,img_array:None):
+    old_num = 64
+    if old_num % frame_num != 0 :
+        raise ValueError("frame_num为64的倍数")
+    
+    div = old_num/frame_num 
+    array_file = array_file[::2,:,:]
+    array_file = array_file.reshape(array_file.shape[0]*div*2,frame_num/2,-1)   
+    array_hand = array_hand[::2,:,:]
+    array_hand = array_hand.reshape(array_hand.shape[0]*div*2,frame_num/2,-1) 
+    array_body = array_body[::2,:,:]
+    array_body = array_body.reshape(array_body.shape[0]*div*2,frame_num/2,-1)
+    if img_array != None:
+        img_array = img_array[::2,:,:]
+        img_array = img_array.reshape(array_body.shape[0]*div*2,frame_num/2,-1)
+    i = 1
+    new_files = np.array()
+    new_hands = np.array()
+    new_bodys = np.array()
+    new_imgs = np.array()
+    while i < array_file.shape[0]:
+        if array_file[i,0,0]==array_file[i-1,0,0]:
+            new_file = np.concatenate((array_file[i,0,0],array_file[i-1,0,0]),axis=1)
+            new_files = np.concatenate((new_files,new_file))
+            new_hand = np.concatenate((array_hand[i,0,0],array_hand[i-1,0,0]),axis=1)
+            new_hands = np.concatenate((new_hands,new_hand))
+            new_body = np.concatenate((array_body[i,0,0],array_body[i-1,0,0]),axis=1)
+            new_bodys = np.concatenate((new_bodys,new_body))
+            if img_array != None:
+                new_img = np.concatenate((img_array[i,0,0],img_array[i-1,0,0]),axis=1)
+                new_imgs = np.concatenate((new_imgs,new_img))
+    return new_files,new_hands,new_bodys,new_imgs

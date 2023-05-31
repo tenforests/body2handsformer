@@ -6,7 +6,7 @@ import torch
 from torch import nn
 from torch.autograd import Variable
 import torchvision
-from torchsummary import summary
+# from torchsummary import summary
 import utils.modelZoo as modelZoo
 from utils.modelZoo import PositionalEncoding
 from utils.load_utils import *
@@ -32,7 +32,7 @@ def main(args):
     ## variables
     learning_rate = args.learning_rate
     pipeline = args.pipeline
-    device = torch.device('cuda:1' if torch.cuda.is_available() else 'cpu')
+    device = torch.device(args.device if torch.cuda.is_available() else 'cpu')
     print('---------------------------------',device,'-------------------------------')
     feature_in_dim, feature_out_dim = FEATURE_MAP[pipeline]
     feats = pipeline.split('2')
@@ -151,7 +151,7 @@ def load_data(args, rng):
         train_ims, test_ims = hand_ims[train_idx,:,:], hand_ims[test_idx,:,:]
         train_ims = train_ims.astype(np.float32)
         test_ims = test_ims.astype(np.float32)
-
+# 时间，特征 ->特征，时间
     train_X = np.swapaxes(train_X, 1, 2).astype(np.float32)
     train_Y = np.swapaxes(train_Y, 1, 2).astype(np.float32)
     test_X = np.swapaxes(test_X, 1, 2).astype(np.float32)
@@ -171,12 +171,11 @@ def load_data(args, rng):
     train_Y = np.swapaxes(train_Y, 1, 2).astype(np.float32)
     test_X = np.swapaxes(test_X, 1, 2).astype(np.float32)
     test_Y = np.swapaxes(test_Y, 1, 2).astype(np.float32)
-    
-    if args.seq_length!=64:
-        einops.rearrange(train_X,'b (c w1) f -> (b w1) c f',c = args.seq_length )
-        einops.rearrange(train_Y,'b (c w1) f -> (b w1) c f',c = args.seq_length )
-        einops.rearrange(test_X,'b (c w1) f -> (b w1) c f',c = args.seq_length )
-        einops.rearrange(test_Y,'b (c w1) f -> (b w1) c f',c = args.seq_length )
+    # if args.seq_length!=64:
+    #     einops.rearrange(train_X,'b (c w1) f -> (b w1) c f',c = args.seq_length )
+    #     einops.rearrange(train_Y,'b (c w1) f -> (b w1) c f',c = args.seq_length )
+    #     einops.rearrange(test_X,'b (c w1) f -> (b w1) c f',c = args.seq_length )
+    #     einops.rearrange(test_Y,'b (c w1) f -> (b w1) c f',c = args.seq_length )
     print ("====> train/test", train_X.shape, test_X.shape)
     print("=====> standardization done")
 

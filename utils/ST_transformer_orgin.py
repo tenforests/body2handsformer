@@ -97,7 +97,8 @@ class ST_former(nn.Module):
 			# batch = batch.add(self.S_pos_embed)                        # 加入位置编码
 			# out = self.S_transformer(batch)                            # 每帧的关节点作为输入
 			# res = torch.cat((res,out),0)
-		res = torch.concat((self.class_token,x),dim=1)           	     # (n*f)*49*64
+		class_token = self.class_token.expand(hand_input.shape[0],-1,-1)
+		res = torch.concat((class_token,x),dim=1)           	     # (n*f)*49*64
 		res = res.add(self.S_pos_embed)                       			 # 加入位置编码
 		res = self.S_transformer(res)									 # 送入S_transformer
 		res = res[:,0,:] # ((n*f)*1*512)								 # (n*f)*(joint+1)*64 -> (n*f)*64

@@ -8,20 +8,21 @@ from torch.autograd import Variable
 import torchvision
 # from torchsummary import summary
 import utils.modelZoo as modelZoo
+import utils.ST_former_2 as ST_former
 from utils.modelZoo import PositionalEncoding
 from utils.load_utils import *
 import einops
 
 DATA_PATHS = {
-        'video_data/Oliver/train/':1,
+        #'video_data/Oliver/train/':1,
         'video_data/Chemistry/train/':2,
         'video_data/Seth/train/':5,
-        # 'video_data/Almaram/train':3,
+        #'video_data/Almaram/train':3,
         # 'video_data/Angelica/train':4,
-        # 'video_data/Ellen/train':5,
-        # 'video_data/Rock/train':7,
-        # 'video_data/Shelly/train':8,
-        'video_data/Conan/train/':6,
+        #'video_data/Ellen/train':5,
+        'video_data/Rock/train':7,
+        'video_data/Shelly/train':8,
+        #'video_data/Conan/train/':6,
         }
 
 
@@ -32,7 +33,8 @@ def main(args):
     ## variables
     learning_rate = args.learning_rate
     pipeline = args.pipeline
-    device = torch.device(args.device if torch.cuda.is_available() else 'cpu')
+    device = torch.device(args.cuda if torch.cuda.is_available() else 'cpu')
+    args.device=device
     print('---------------------------------',device,'-------------------------------')
     feature_in_dim, feature_out_dim = FEATURE_MAP[pipeline]
     feats = pipeline.split('2')
@@ -46,19 +48,18 @@ def main(args):
         os.makedirs(args.model_path)
 
     ## set up generator model
-    args.model = 'body2handformer'
-    generator = getattr(modelZoo,args.model)()
-    generator.build_net(feature_in_dim=36,  feature_out_dim=args.feature_out_dim, hand_dim = 252,
-	       seq_length = args.seq_length,nhead =args.nhead, dropout = args.dropout,
-		   num_encoder_layers =args.num_encoder_layers,num_decoder_layers =args.num_decoder_layers, 
-		   dim_feedforward = args.dim_feedforward,require_image=args.require_image,pos_embedding = PositionalEncoding(args.feature_out_dim,args.pos_dropout,args.seq_length),
-		    mem_mask = args.mem_mask,output_mask = args.output_mask)
+    args.model = 'ST_former'
+    generator = getattr(ST_former,args.model)(hand_input=args.hand_input, body_input=args.body_input, t_out_dim=args.t_out_dim, s_out_dim=args.s_out_dim,
+		        nhead = args.nhead, dropout = args.dropout, batch_size=args.batch_size, seq_length =args.seq_length, 
+				T_num_encoder_layers = args.T_num_decoder_layers, S_num_encoder_layers = args.S_num_decoder_layers,
+                S_feedforward_dim = args.S_feedforward_dim,T_feedforward_dim = args.T_feedforward_dim)
+    generator.build_net()
     # pretrain_model = args.checkpoint
     # loaded_state = torch.load(pretrain_model, map_location=lambda storage, loc: storage)
     # generator.load_state_dict(loaded_state['state_dict'], strict=False)
     # generator = getattr(modelZoo, args.model)()
     # generator.build_net(feature_in_dim, feature_out_dim, require_image=args.require_image)
-    generator.cuda()
+    generator.to(device)
     reg_criterion = nn.L1Loss()
     g_optimizer = torch.optim.Adam(generator.parameters(), lr=learning_rate, weight_decay=1e-5)
     generator.train()
@@ -66,7 +67,7 @@ def main(args):
     args.model = 'regressor_fcn_bn_discriminator'
     discriminator = getattr(modelZoo, args.model)()
     discriminator.build_net(feature_out_dim)
-    discriminator.cuda()
+    discriminator.to(device)
     gan_criterion = nn.MSELoss()
     d_optimizer = torch.optim.Adam(discriminator.parameters(), lr=learning_rate, weight_decay=1e-5)
     discriminator.train()
@@ -117,6 +118,7 @@ def load_data(args, rng):
     ## load from external files
     for key, value in DATA_PATHS.items():
         key = os.path.join(args.base_path, key)
+        print("require:",key)
         curr_p0, curr_p1, curr_paths, _ = load_windows(key, args.pipeline, require_image=args.require_image)
         if gt_windows is None:
             if args.require_image:
@@ -211,13 +213,13 @@ def train_discriminator(args, rng, generator, discriminator, gan_criterion, d_op
         idxStart = bi * args.batch_size
         inputData_np = train_X[idxStart:(idxStart + args.batch_size), :, :]
         outputData_np = train_Y[idxStart:(idxStart + args.batch_size), :, :]
-        inputData = Variable(torch.from_numpy(inputData_np)).cuda()
-        outputGT = Variable(torch.from_numpy(outputData_np)).cuda()
+        inputData = Variable(torch.from_numpy(inputData_np)).to(args.device)
+        outputGT = Variable(torch.from_numpy(outputData_np)).to(args.device)
 
         imsData = None
         if args.require_image:
             imsData_np = train_ims[idxStart:(idxStart + args.batch_size), :, :]
-            imsData = Variable(torch.from_numpy(imsData_np)).cuda()
+            imsData = Variable(torch.from_numpy(imsData_np)).to(args.device)
         ## DONE setting batch data
 
         with torch.no_grad():
@@ -242,32 +244,32 @@ def train_generator(args, rng, generator, discriminator, reg_criterion, gan_crit
     totalSteps = len(batchinds)
     rng.shuffle(batchinds)
     avgLoss = 0.
-
     for bii, bi in enumerate(batchinds):
         ## setting batch data
         idxStart = bi * args.batch_size
         inputData_np = train_X[idxStart:(idxStart + args.batch_size), :, :]
         outputData_np = train_Y[idxStart:(idxStart + args.batch_size), :, :]
-        inputData = Variable(torch.from_numpy(inputData_np)).cuda()
-        outputGT = Variable(torch.from_numpy(outputData_np)).cuda()
-
+        inputData = Variable(torch.from_numpy(inputData_np)).to(args.device)
+        outputGT = Variable(torch.from_numpy(outputData_np)).to(args.device)
+        #print("train:",inputData_np.shape)
         imsData = None
         if args.require_image:
             imsData_np = train_ims[idxStart:(idxStart + args.batch_size), :, :]
-            imsData = Variable(torch.from_numpy(imsData_np)).cuda()
+            imsData = Variable(torch.from_numpy(imsData_np)).to(args.device)
         ## DONE setting batch data
-
-        output = generator(seq_input=inputData, hand_input=outputGT,img_input=imsData)
-        output = generator.out(output)
+        #print("shape:",inputData.shape,outputGT.shape,imsData.shape)
+        output = generator(body_input=inputData, hand_input=imsData)
         # fake_motion = calc_motion(output)
         # with torch.no_grad():
         #     fake_score = discriminator(fake_motion)
         # fake_score = fake_score.detach()
-# + gan_criterion(fake_score, torch.ones_like(fake_score))
+        # + gan_criterion(fake_score, torch.ones_like(fake_score))
         # transformer原始损失修改版本
         # 将 output reshape=> batchsize*token, feacture 64*64,252
-        output = output.contiguous().view(-1, output.size(-1))
-        outputGT = outputGT.contiguous().view(-1, outputGT.size(-1))
+        #print("output:",output.shape,outputGT.shape)
+        # output = output.contiguous().view(-1, output.size(-1)*output.size(-2))
+        # outputGT = outputGT.contiguous().view(-1, outputGT.size(-1))
+        #print("output:",output.shape,outputGT.shape)
         g_loss = reg_criterion(output, outputGT)
         g_optimizer.zero_grad()
         g_loss.backward()
@@ -293,19 +295,19 @@ def val_generator(args, generator, discriminator, reg_criterion,d_optimizer, g_o
         idxStart = bi * args.batch_size
         inputData_np = test_X[idxStart:(idxStart + args.batch_size), :, :]
         outputData_np = test_Y[idxStart:(idxStart + args.batch_size), :, :]
-        inputData = Variable(torch.from_numpy(inputData_np)).cuda()
-        outputGT = Variable(torch.from_numpy(outputData_np)).cuda()
+        inputData = Variable(torch.from_numpy(inputData_np)).to(args.device)
+        outputGT = Variable(torch.from_numpy(outputData_np)).to(args.device)
 
         imsData = None
         if args.require_image:
             imsData_np = test_ims[idxStart:(idxStart + args.batch_size), :, :]
-            imsData = Variable(torch.from_numpy(imsData_np)).cuda()
+            imsData = Variable(torch.from_numpy(imsData_np)).to(args.device)
         ## DONE setting batch data
         
-        output = generator(seq_input=inputData, hand_input=outputGT,img_input=imsData)
-        output = generator.out(output)
+        output = generator(body_input=inputData, hand_input=imsData)
         output = output.contiguous().view(-1, output.size(-1))
         outputGT = outputGT.contiguous().view(-1, outputGT.size(-1))
+        #print(output.shape,outputGT.shape)
         g_loss = reg_criterion(output, outputGT)
         testLoss += g_loss.item() * args.batch_size
 
@@ -336,24 +338,26 @@ if __name__ == '__main__':
     parser.add_argument('--base_path', type=str, required=True, help='path to the directory where the data files are stored')
     parser.add_argument('--pipeline', type=str, default='arm2wh', help='pipeline specifying which input/output joints to use')
     parser.add_argument('--num_epochs', type=int, default=100, help='number of training epochs')
-    parser.add_argument('--batch_size', type=int, default=256, help='batch size for training')
+    parser.add_argument('--batch_size', type=int, default=64, help='batch size for training')
     parser.add_argument('--learning_rate', type=float, default=4e-3, help='learning rate for training G and D')
     parser.add_argument('--require_image', action='store_true', help='use additional image feature or not')
     parser.add_argument('--model_path', type=str, required=True , help='path for saving trained models')
     parser.add_argument('--log_step', type=int , default=100, help='step size for prining log info')
     parser.add_argument('--tag', type=str, default='', help='prefix for naming purposes')
     parser.add_argument("--cuda",type=str,default = 'cuda:0',help = 'gpu use')
-    parser.add_argument("--feature_out_dim",type=int , default=512, help='transformer token size')
-    parser.add_argument("--seq_length",type=int , default=64, help='token seq')
-    parser.add_argument("--num_encoder_layers",type=int , default=6, help='encoder layer number')
-    parser.add_argument("--num_decoder_layers",type=int , default=6, help='decoder layer number')
-    parser.add_argument("--dim_feedforward",type=int , default=2048, help='fc node num')
-    parser.add_argument("--dropout",type=float , default=0.1, help='dropout rate')
-    parser.add_argument("--mem_mask",type=bool , default=False, help='encoder mem mask switch')
-    parser.add_argument("--output_mask",type=bool , default=True, help='decoder input mask switch')
-    parser.add_argument("--pos_dropout",type=float , default=0.1, help='pos emb dropout rate')
+    parser.add_argument("--hand_input",type=int , default=1024, help='hand feature')
+    parser.add_argument("--body_input",type=int , default=6*6, help='body input size')
+    parser.add_argument("--t_out_dim",type=int , default=512, help='temporal output')
+    parser.add_argument("--s_out_dim",type=int , default=64, help='spatil output')
     parser.add_argument("--nhead",type=int , default=8, help='multi head att num(must can divide input dim)')
+    parser.add_argument("--dropout",type=float , default=0.1, help='pos emb dropout rate')
+    parser.add_argument("--seq_length",type=int , default=32, help='frame')
+    parser.add_argument("--S_num_decoder_layers",type=int , default=6, help='decoder layer number')
+    parser.add_argument("--T_num_decoder_layers",type=int , default=6, help='decoder layer number')
+    parser.add_argument("--S_feedforward_dim",type=int , default=128, help='fc node num')
+    parser.add_argument("--T_feedforward_dim",type=int , default=1024, help='fc node num')
+
     # parser.add_argument('--checkpoint', type=str,  help='path to checkpoint file (pretrained model)')
     args = parser.parse_args()
-    print(args)
+    #print(args)
     main(args)

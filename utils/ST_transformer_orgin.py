@@ -50,7 +50,7 @@ class ST_former(nn.Module):
 				nn.LayerNorm(self.s_out_dim))
 		
 		#class_token的定义
-		self.class_token = nn.Parameter(torch.randn(self.batch_size*self.seq_length,1,self.s_out_dim))
+		self.class_token = nn.Parameter(torch.randn(1,1,self.s_out_dim))
 		# 定义可学习的位置编码
 		self.T_pos_embed = nn.Parameter(torch.zeros(self.seq_length, self.t_out_dim))
 		self.S_pos_embed = nn.Parameter(torch.zeros(self.joint+1,self.s_out_dim))

@@ -3,3 +3,4 @@
 *.log
 *.pth
 *.npy
+*.sh

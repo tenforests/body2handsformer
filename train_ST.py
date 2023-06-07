@@ -6,9 +6,8 @@ import torch
 from torch import nn
 from torch.autograd import Variable
 import torchvision
-# from torchsummary import summary
 import utils.modelZoo as modelZoo
-import utils.ST_former_2 as ST_former
+import utils.ST_former_4 as ST_former
 from utils.modelZoo import PositionalEncoding
 from utils.load_utils import *
 import einops
@@ -118,8 +117,9 @@ def load_data(args, rng):
     ## load from external files
     for key, value in DATA_PATHS.items():
         key = os.path.join(args.base_path, key)
-        print("require:",key)
-        curr_p0, curr_p1, curr_paths, _ = load_windows(key, args.pipeline, require_image=args.require_image)
+        print("Hello:",key)
+        # p0 身体 p1 手部特征 paths 路径
+        curr_p0, curr_p1, curr_paths, _ = load_windows(key, args.pipeline, require_image=args.require_image, frame=args.seq_length)
         if gt_windows is None:
             if args.require_image:
                 hand_ims = curr_p0[1]
@@ -130,15 +130,15 @@ def load_data(args, rng):
             p0_paths = curr_paths
         else:
             if args.require_image:
-                hand_ims = np.concatenate((hand_ims, curr_p0[1]), axis=0)
+                hand_ims = np.concatenate((hand_ims, curr_p0[1]), axis=0)     # 1 装的是手部6D表示
                 curr_p0 = curr_p0[0]
-            gt_windows = np.concatenate((gt_windows, curr_p0), axis=0)
+            gt_windows = np.concatenate((gt_windows, curr_p0), axis=0)        # 0 装的是身体6D表示
             quant_windows = np.concatenate((quant_windows, curr_p1), axis=0)
             p0_paths = np.concatenate((p0_paths, curr_paths), axis=0)
 
-    print("====>  in/out", gt_windows.shape, quant_windows.shape)
+    print("====>  in/out", gt_windows.shape, quant_windows.shape) # 36 252
     if args.require_image:
-         print("====> hand_ims", hand_ims.shape)
+         print("====> hand_ims", hand_ims.shape) #1024
     ## DONE load from external files
 
 
@@ -153,7 +153,7 @@ def load_data(args, rng):
         train_ims, test_ims = hand_ims[train_idx,:,:], hand_ims[test_idx,:,:]
         train_ims = train_ims.astype(np.float32)
         test_ims = test_ims.astype(np.float32)
-# 时间，特征 ->特征，时间
+
     train_X = np.swapaxes(train_X, 1, 2).astype(np.float32)
     train_Y = np.swapaxes(train_Y, 1, 2).astype(np.float32)
     test_X = np.swapaxes(test_X, 1, 2).astype(np.float32)
@@ -173,6 +173,7 @@ def load_data(args, rng):
     train_Y = np.swapaxes(train_Y, 1, 2).astype(np.float32)
     test_X = np.swapaxes(test_X, 1, 2).astype(np.float32)
     test_Y = np.swapaxes(test_Y, 1, 2).astype(np.float32)
+    
     # if args.seq_length!=64:
     #     einops.rearrange(train_X,'b (c w1) f -> (b w1) c f',c = args.seq_length )
     #     einops.rearrange(train_Y,'b (c w1) f -> (b w1) c f',c = args.seq_length )
@@ -359,5 +360,5 @@ if __name__ == '__main__':
 
     # parser.add_argument('--checkpoint', type=str,  help='path to checkpoint file (pretrained model)')
     args = parser.parse_args()
-    #print(args)
+    print(args)
     main(args)

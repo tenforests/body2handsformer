@@ -132,7 +132,7 @@ def np_rot6d_to_mat(np_r6d):
 
 
 ## utility to load windows from outside files
-def load_windows(data_dir, pipeline, num_samples=None, use_euler=False, require_image=False, require_audio=False, hand3d_image=False, use_lazy=False, test_smpl=False, temporal=False):
+def load_windows(data_dir, pipeline, num_samples=None, use_euler=False, require_image=False, require_audio=False, hand3d_image=False, use_lazy=False, test_smpl=False, temporal=False, frame=64):
     preload_path = os.path.join(data_dir, 'filepaths.npy')
     print(preload_path)
     if os.path.exists(preload_path):
@@ -140,7 +140,7 @@ def load_windows(data_dir, pipeline, num_samples=None, use_euler=False, require_
         feats = pipeline.split('2')
         in_feat, out_feat = feats[0], feats[1]
         p0_size, p1_size = FEATURE_MAP[pipeline]
-
+        image_windows = np.zeros(shape=(2,2))
         if os.path.exists(os.path.join(data_dir, 'full_bodies2.npy')):
             print('using super quick load', data_dir)
             p1_windows = np.load(os.path.join(data_dir, 'full_hands2.npy'), allow_pickle=True)
@@ -153,9 +153,10 @@ def load_windows(data_dir, pipeline, num_samples=None, use_euler=False, require_
             if require_image:
                 image_windows = np.load(os.path.join(data_dir, 'full_resnet.npy'), allow_pickle=True)
 
+        if frame!=64:
+            filepaths,p1_windows,p0_windows,image_windows = frameCaculate_1(filepaths,p1_windows,p0_windows,image_windows,frame)
         if require_image:
-            p0_windows = (p0_windows, image_windows)
-
+            p0_windows = (p0_windows, image_windows)  #p0 36  image 1024
         return p0_windows, p1_windows, filepaths, None
 
 
@@ -219,35 +220,70 @@ def save_results(paths, output, pipeline, base_path, tag=''):
                         f.write("%s "%item)
                 ## DONE writing prediciton to file
 
-def frameCaculate(array_file,array_hand,array_body,frame_num:32,img_array:None):
+def frameCaculate_1(array_file,array_hand,array_body,array_img,frame_num=32):
+    #print("shape:",array_file.shape,array_hand.shape,array_body.shape,array_img.shape)
     old_num = 64
     if old_num % frame_num != 0 :
-        raise ValueError("frame_num为64的倍数")
-    
-    div = old_num/frame_num 
+        raise ValueError("frame_num为64的因子")
+    div = old_num//frame_num
+    if array_img.shape!=(2,2):
+        array_img=np.array(array_img)
+    array_file = array_file[:,::div,:]
+    array_hand = array_hand[:,::div,:]
+    array_body = array_body[:,::div,:]
+    if array_img.shape!=(2,2):
+        array_img = array_img[:,::div,:]
+    #print("shape2:",array_file.shape,array_hand.shape,array_body.shape,array_img.shape)
+    return array_file,array_hand,array_body,array_img
+
+def frameCaculate_2(array_file,array_hand,array_body,array_img,frame_num=32):
+    old_num = 64
+    if old_num % frame_num != 0 :
+        raise ValueError("frame_num为64的因子")
+    div = old_num//frame_num
+    if array_img.shape!=(2,2):
+        array_img=np.array(array_img)
     array_file = array_file[::2,:,:]
-    array_file = array_file.reshape(array_file.shape[0]*div*2,frame_num/2,-1)   
+    array_file = array_file.reshape(array_file.shape[0]*div*2,frame_num//2,-1)
     array_hand = array_hand[::2,:,:]
-    array_hand = array_hand.reshape(array_hand.shape[0]*div*2,frame_num/2,-1) 
+    array_hand = array_hand.reshape(array_hand.shape[0]*div*2,frame_num//2,-1)
     array_body = array_body[::2,:,:]
-    array_body = array_body.reshape(array_body.shape[0]*div*2,frame_num/2,-1)
-    if img_array != None:
-        img_array = img_array[::2,:,:]
-        img_array = img_array.reshape(array_body.shape[0]*div*2,frame_num/2,-1)
-    i = 1
-    new_files = np.array()
-    new_hands = np.array()
-    new_bodys = np.array()
-    new_imgs = np.array()
-    while i < array_file.shape[0]:
-        if array_file[i,0,0]==array_file[i-1,0,0]:
-            new_file = np.concatenate((array_file[i,0,0],array_file[i-1,0,0]),axis=1)
-            new_files = np.concatenate((new_files,new_file))
-            new_hand = np.concatenate((array_hand[i,0,0],array_hand[i-1,0,0]),axis=1)
-            new_hands = np.concatenate((new_hands,new_hand))
-            new_body = np.concatenate((array_body[i,0,0],array_body[i-1,0,0]),axis=1)
-            new_bodys = np.concatenate((new_bodys,new_body))
-            if img_array != None:
-                new_img = np.concatenate((img_array[i,0,0],img_array[i-1,0,0]),axis=1)
-                new_imgs = np.concatenate((new_imgs,new_img))
+    array_body = array_body.reshape(array_body.shape[0]*div*2,frame_num//2,-1)
+    if array_img.shape!=(2,2):
+            array_img = array_img[::2,:,:]
+            array_img = np.reshape(array_img,(array_img.shape[0]*div*2,frame_num//2,-1))
+
+    array_file_copy=array_file[1:,:,:]
+    array_file_copy=np.append(array_file_copy,np.zeros((1,frame_num//2,array_file_copy.shape[-1])),axis=0)
+    array_hand_copy=array_hand[1:,:,:]
+    array_hand_copy=np.append(array_hand_copy,np.zeros((1,frame_num//2,array_hand_copy.shape[-1])),axis=0)
+    array_body_copy=array_body[1:,:,:]
+    array_body_copy=np.append(array_body_copy,np.zeros((1,frame_num//2,array_body_copy.shape[-1])),axis=0)
+    if array_img.shape!=(2,2):
+        array_img_copy=array_img[1:,:,:]
+        array_img_copy=np.append(array_img_copy,np.zeros((1,frame_num//2,array_img_copy.shape[-1])),axis=0)
+    new_files = np.concatenate((array_file,array_file_copy),axis=1)
+    new_hands = np.concatenate((array_hand,array_hand_copy),axis=1)
+    new_bodys = np.concatenate((array_body,array_body_copy),axis=1)
+    new_imgs = np.concatenate((array_img,array_img_copy),axis=1)
     return new_files,new_hands,new_bodys,new_imgs
+
+def frameCaculate_3(array_file,array_hand,array_body,array_img,frame_num=32):
+    old_num = 64
+    if old_num % frame_num != 0 :
+        raise ValueError("frame_num为64的因子")
+    div = old_num//frame_num
+    if array_img.shape!=(2,2):
+        array_img=np.array(array_img)
+    array_file = array_file[::2,:,:]
+    array_file = array_file.reshape(array_file.shape[0]*div,frame_num,-1)
+    array_hand = array_hand[::2,:,:]
+    array_hand = array_hand.reshape(array_hand.shape[0]*div,frame_num,-1)
+    array_body = array_body[::2,:,:]
+    array_body = array_body.reshape(array_body.shape[0]*div,frame_num,-1)
+    if array_img.shape!=(2,2):
+            array_img = array_img[::2,:,:]
+            array_img = np.reshape(array_img,(array_img.shape[0]*div,frame_num,-1))
+
+
+    return array_file,array_hand,array_body,array_img

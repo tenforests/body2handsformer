@@ -3,3 +3,14 @@
 *.log
 *.pth
 *.npy
+tensorlog/
+Tensorlog/
+testmodel/
+*.pyc
+*.pkl
+*.tar
+*.npz
+*.txt
+mano/
+manopth/
+manopth

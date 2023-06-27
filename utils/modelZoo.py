@@ -316,21 +316,22 @@ class body2handformer(nn.Module):
 			self.img_embbding = nn.Sequential(nn.Dropout(dropout),
 					nn.Linear(1024, int(feature_out_dim/2)),
 					nn.LeakyReLU(0.2, True),
-					nn.BatchNorm1d(seq_length, momentum=0.01))
+					nn.BatchNorm1d(seq_length, momentum=0.01,affine=False))
 			self.seq_embdding = nn.Sequential(	nn.Dropout(dropout),
 					nn.Linear(feature_in_dim, int(feature_out_dim/2)),
 					nn.LeakyReLU(0.2, True),
-					nn.BatchNorm1d(seq_length, momentum=0.01))
+					nn.BatchNorm1d(seq_length, momentum=0.01,affine=False))
 		else:
 			self.seq_embdding = nn.Sequential(	nn.Dropout(dropout),
 					nn.Linear(feature_in_dim, feature_out_dim),
 					nn.LeakyReLU(0.2, True),
-					nn.BatchNorm1d(seq_length, momentum=0.01))
+					nn.BatchNorm1d(seq_length, momentum=0.01,affine=False))
 			
 		self.hand_embdding = nn.Sequential(	nn.Dropout(dropout),
 				nn.Linear(hand_dim, feature_out_dim),
-				nn.LeakyReLU(0.2, True),
-				nn.BatchNorm1d(seq_length, momentum=0.01))
+				nn.LeakyReLU(0.2, True)
+				# nn.BatchNorm1d(seq_length, momentum=0.01,affine=False)
+				)
 			
 		# 定义 pos embedding default cos sin
 		self.pos_embdding = pos_embedding
@@ -345,7 +346,27 @@ class body2handformer(nn.Module):
 				nn.Linear(feature_out_dim, hand_dim))
 				# nn.LeakyReLU(0.2, True),
 				# nn.BatchNorm1d(feature_out_dim, momentum=0.01))
-	def forward(self,seq_input,hand_input,img_input=None):
+	# def forward(self,seq_input,hand_input,img_input=None):
+	# 	# seq
+	# 	x = self.seq_embdding(seq_input)
+	# 	# img
+	# 	if self.require_image:
+	# 		img_emd = self.img_embbding(img_input)
+	# 		# b x frame x feacture
+	# 		x = torch.concat((x,img_emd),dim = 2)
+	# 	# hand seq 64->63f
+	# 	x = self.pos_embdding.forward(x)
+	# 	hand_input_in = hand_input[:,:hand_input.shape[1]-1,:]
+	# 	batch_size = seq_input.shape[0]
+	# 	begin_token = self.begin_token.expand(batch_size, -1, -1)
+	# 	hand_emb = torch.concat((begin_token,hand_input_in),dim=1)
+	# 	hand_emb = self.hand_embdding(hand_emb)
+	# 	# add begin token
+	# 	hand_emb = self.pos_embdding.forward(hand_emb)
+
+	# 	x = self.transformer.forward(x,hand_emb,memory_mask=self.mask_mem,tgt_mask=self.mask_output)
+	# 	return x
+	def forward(self,seq_input,hand_input=None,img_input=None,inference=False):
 		# seq
 		x = self.seq_embdding(seq_input)
 		# img
@@ -355,7 +376,14 @@ class body2handformer(nn.Module):
 			x = torch.concat((x,img_emd),dim = 2)
 		# hand seq 64->63
 		x = self.pos_embdding.forward(x)
-		hand_input_in = hand_input[:,:hand_input.shape[1]-1,:]
+		if not inference :
+			hand_input_in = hand_input[:,:hand_input.shape[1]-1,:]
+			mask_mem = self.mask_mem
+			mask_output = self.mask_output
+		else:
+			hand_input_in = hand_input
+			mask_output = None
+			mask_mem = None
 		batch_size = seq_input.shape[0]
 		begin_token = self.begin_token.expand(batch_size, -1, -1)
 		hand_emb = torch.concat((begin_token,hand_input_in),dim=1)
@@ -363,7 +391,8 @@ class body2handformer(nn.Module):
 		# add begin token
 		hand_emb = self.pos_embdding.forward(hand_emb)
 
-		x = self.transformer.forward(x,hand_emb,memory_mask=self.mask_mem,tgt_mask=self.mask_output)
+
+		x = self.transformer.forward(x,hand_emb,memory_mask=mask_mem,tgt_mask=mask_output)
 		return x
 	
 	# def train(self,seq_input,hand_input,img_input=None):
@@ -389,7 +418,7 @@ class body2handformer_discriminator(nn.Module):
 		self.project = nn.Sequential(nn.Dropout(dropout),
 					nn.Linear(hand_dim, feature_out_dim),
 					nn.LeakyReLU(0.2, True),
-					nn.BatchNorm1d(seq_length, momentum=0.01)
+					nn.BatchNorm1d(seq_length, momentum=0.01,affine=False)
 		)
 		# mse or bceloss
 		self.head = nn.Sequential(nn.Dropout(dropout),

@@ -22,29 +22,29 @@ ARMS_ONLY = [12,13,14,15,16,17] #arms for mtc
 EPSILON = 1e-10
 
 ## helper for calculating mean and standard dev
-def mean_std(feat, data, rot_idx):
-    if feat == 'wh':
-       mean = data.mean(axis=2).mean(axis=0)[np.newaxis,:, np.newaxis]
-       std =  data.std(axis=2).std(axis=0)[np.newaxis,:, np.newaxis]
-       std += EPSILON
-    else:
-        mean = data.mean(axis=2).mean(axis=0)[np.newaxis,:, np.newaxis]
+def mean_std(feat, data, rot_idx):     # rot_idx=-6
+    if feat == 'wh': #hand
+       mean = data.mean(axis=2).mean(axis=0)[np.newaxis,:, np.newaxis] #压缩第0 2维对关节点求均值后扩展维度 [1,N,1] 
+       std =  data.std(axis=2).std(axis=0)[np.newaxis,:, np.newaxis]    #求标准差
+       std += EPSILON     #确保标准差不为0
+    else: #arm
+        mean = data.mean(axis=2).mean(axis=0)[np.newaxis,:, np.newaxis]    
         std = np.array([[[data.std()]]]).repeat(data.shape[1], axis=1)
     return mean, std
 
 
 
 ## helper for calculating standardization stats
-def calc_standard(train_X, train_Y, pipeline):
+def calc_standard(train_X, train_Y, pipeline):                 # body关节点 hand关节点 训练集 b*36*t b*512*t
     rot_idx = -6
     feats = pipeline.split('2')
-    in_feat, out_feat = feats[0], feats[1]
-    body_mean_X, body_std_X = mean_std(in_feat, train_X, rot_idx)
-    if in_feat == out_feat:
+    in_feat, out_feat = feats[0], feats[1]   # in_feat arm out_feat wh
+    body_mean_X, body_std_X = mean_std(in_feat, train_X, rot_idx)   #body_mean_X body关节点训练集均值 body_std_X body关节点训练集标准差
+    if in_feat == out_feat:   
         body_mean_Y = body_mean_X
         body_std_Y = body_std_X
     else:
-        body_mean_Y, body_std_Y = mean_std(out_feat, train_Y, rot_idx)
+        body_mean_Y, body_std_Y = mean_std(out_feat, train_Y, rot_idx)  #body_mean_Y hand关节点训练集均值 body_std_Y hand关节点训练集标准差
     return body_mean_X, body_std_X, body_mean_Y, body_std_Y
 
 
@@ -131,32 +131,32 @@ def np_rot6d_to_mat(np_r6d):
     return np_matrix
 
 
-## utility to load windows from outside files
+## utility to load windows from outside files  从指定的数据目录中加载窗口数据，并根据需要对数据进行预处理和整合
 def load_windows(data_dir, pipeline, num_samples=None, use_euler=False, require_image=False, require_audio=False, hand3d_image=False, use_lazy=False, test_smpl=False, temporal=False, frame=64):
     preload_path = os.path.join(data_dir, 'filepaths.npy')
     print(preload_path)
     if os.path.exists(preload_path):
-        filepaths = np.load(preload_path, allow_pickle=True)
+        filepaths = np.load(preload_path, allow_pickle=True)  #从路径中加载视频信息
         feats = pipeline.split('2')
-        in_feat, out_feat = feats[0], feats[1]
-        p0_size, p1_size = FEATURE_MAP[pipeline]
-        image_windows = np.zeros(shape=(2,2))
-        if os.path.exists(os.path.join(data_dir, 'full_bodies2.npy')):
+        in_feat, out_feat = feats[0], feats[1]   #in_feat=arm out_feat= wh  
+        p0_size, p1_size = FEATURE_MAP[pipeline]  #p0_size=36 p1_size=512
+        image_windows = np.zeros(shape=(2,2))        #图像窗口的占位符，可以在后续的代码中填充实际的图像数据。 2*2全0数组
+        if os.path.exists(os.path.join(data_dir, 'full_bodies2.npy')): 
             print('using super quick load', data_dir)
-            p1_windows = np.load(os.path.join(data_dir, 'full_hands2.npy'), allow_pickle=True)
-            p0_windows = np.load(os.path.join(data_dir, 'full_bodies2.npy'), allow_pickle=True)
-            B,T = p0_windows.shape[0], p0_windows.shape[1]
+            p1_windows = np.load(os.path.join(data_dir, 'full_hands2.npy'), allow_pickle=True)    #p1_windows 加载hand数据  b*t*512
+            p0_windows = np.load(os.path.join(data_dir, 'full_bodies2.npy'), allow_pickle=True)   # p0 window  加载body数据 b*t*36
+            B,T = p0_windows.shape[0], p0_windows.shape[1]       #提取p0数据的batch_size seq_length的长度
             if in_feat == 'arm':
-                p0_windows = np.reshape(p0_windows, (B,T,-1,6))
-                p0_windows = p0_windows[:,:,ARMS_ONLY,:]
-                p0_windows = np.reshape(p0_windows, (B,T,-1))
+                p0_windows = np.reshape(p0_windows, (B,T,-1,6))    # b*t*n->b*t*m*6
+                p0_windows = p0_windows[:,:,ARMS_ONLY,:]             #ARMS_ONLY = [12,13,14,15,16,17] #arms for mtc  提取手臂关节点 
+                p0_windows = np.reshape(p0_windows, (B,T,-1))   #b*t*6*6->b*t*36  
             if require_image:
-                image_windows = np.load(os.path.join(data_dir, 'full_resnet.npy'), allow_pickle=True)
+                image_windows = np.load(os.path.join(data_dir, 'full_resnet.npy'), allow_pickle=True)   #image_windows 加载手部图片数据
 
         if frame!=64:
             filepaths,p1_windows,p0_windows,image_windows = frameCaculate_1(filepaths,p1_windows,p0_windows,image_windows,frame)
         if require_image:
-            p0_windows = (p0_windows, image_windows)  #p0 36  image 1024
+            p0_windows = (p0_windows, image_windows)  #p0 36  image 1024  #如果需要手部图片 把手部图片接在 body的数据后面
         return p0_windows, p1_windows, filepaths, None
 
 
@@ -219,22 +219,22 @@ def save_results(paths, output, pipeline, base_path, tag=''):
                     for item in idk:
                         f.write("%s "%item)
                 ## DONE writing prediciton to file
-
+                  #视频信息 hand数据 body数据 手部图片数据
 def frameCaculate_1(array_file,array_hand,array_body,array_img,frame_num=32):
     #print("shape:",array_file.shape,array_hand.shape,array_body.shape,array_img.shape)
     old_num = 64
     if old_num % frame_num != 0 :
-        raise ValueError("frame_num为64的因子")
-    div = old_num//frame_num
+        raise ValueError("frame_num为64的因子")     #frame_num要被old_num整除
+    div = old_num//frame_num                    
     if array_img.shape!=(2,2):
-        array_img=np.array(array_img)
-    array_file = array_file[:,::div,:]
+        array_img=np.array(array_img)     #转换成numpy数组
+    array_file = array_file[:,::div,:]  #将array_file数组沿着第二个维度（帧）按照间隔div进行切片，缩减数组的长度。 步长为div
     array_hand = array_hand[:,::div,:]
     array_body = array_body[:,::div,:]
     if array_img.shape!=(2,2):
-        array_img = array_img[:,::div,:]
+        array_img = array_img[:,::div,:]   
     #print("shape2:",array_file.shape,array_hand.shape,array_body.shape,array_img.shape)
-    return array_file,array_hand,array_body,array_img
+    return array_file,array_hand,array_body,array_img    
 
 def frameCaculate_2(array_file,array_hand,array_body,array_img,frame_num=32):
     old_num = 64

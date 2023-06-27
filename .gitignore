@@ -9,3 +9,11 @@ plot/
 manopth/
 mano/
 *.pyc
+*.mp4
+*.png
+*.jpg
+*.npz
+*.pkl
+*.txt
+manopth
+

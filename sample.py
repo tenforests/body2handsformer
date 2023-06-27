@@ -1,5 +1,6 @@
 # Copyright (c) Facebook, Inc. and its affiliates.
 import argparse
+import math
 import os
 import json
 import numpy as np
@@ -161,7 +162,7 @@ def main(args):
     print(">>> L1_Loss %.5f MPJRE %.5f MPJPE %.5f " %(sum_L1,sum_MPJRE,sum_MPJPE))
     # save_results(test_Y_paths, output_np, args.pipeline, args.base_path, tag=args.tag+str(error))
     ## DONE preparing output for saving
-
+    print('mseloss:%.5f,l1loss:%.5f,mpjre:%.5f,mpjre_degree:%.5f,mpjpe_mm:%.5f'% (mseerror,l1error,mpjre,mpjre* 360.0 / (2 * math.pi),mpjpe))
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()

@@ -8,7 +8,7 @@ from torch.autograd import Variable
 import torchvision
 import matplotlib.pyplot as plt
 import utils.modelZoo as modelZoo
-import utils.ST_former_2 as ST_former
+import utils.ST_former_4 as ST_former
 from utils.modelZoo import PositionalEncoding
 from utils.load_utils import *
 from utils.mertic import *

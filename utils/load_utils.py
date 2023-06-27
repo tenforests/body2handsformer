@@ -12,7 +12,10 @@ from shutil import copyfile
 from PIL import Image,ImageDraw
 from torchvision import transforms
 import torch
+import torch.utils.data as Data
 
+from torch.utils.data import DataLoader,Dataset
+import pandas as pd
 
 FEATURE_MAP = {
     'arm2wh':((6*6), 42*6),
@@ -154,7 +157,8 @@ def load_windows(data_dir, pipeline, num_samples=None, use_euler=False, require_
                 image_windows = np.load(os.path.join(data_dir, 'full_resnet.npy'), allow_pickle=True)   #image_windows 加载手部图片数据
 
         if frame!=64:
-            filepaths,p1_windows,p0_windows,image_windows = frameCaculate_1(filepaths,p1_windows,p0_windows,image_windows,frame)
+            #print("frame:",frame)
+            filepaths,p1_windows,p0_windows,image_windows = frameCaculate_3(filepaths,p1_windows,p0_windows,image_windows,frame)
         if require_image:
             p0_windows = (p0_windows, image_windows)  #p0 36  image 1024  #如果需要手部图片 把手部图片接在 body的数据后面
         return p0_windows, p1_windows, filepaths, None
@@ -287,3 +291,4 @@ def frameCaculate_3(array_file,array_hand,array_body,array_img,frame_num=32):
 
 
     return array_file,array_hand,array_body,array_img
+

@@ -45,7 +45,8 @@ def evaluate_prediction(
     is_adam: True,
     mean,                   #均值
     std,                    #标准差 
-    device='cpu'
+    device='cpu',
+    vis:False
 ):
     sample = sample.reshape(-1,252,1)           #手部预测值
     gt_sample = gt_sample.reshape(-1,252,1)     #手部真实值
@@ -103,13 +104,29 @@ def evaluate_prediction(
 
     shape = torch.zeros([gt_left.shape[0],10]).to(device)
     #print("device3:",pre_left.device,shape.device)
-    _,j_l_p =mano_left(pre_left,shape)          #  左手预测关节点
-    _,j_r_p =mano_right(pre_right,shape)        #   右手预测关节点
-    _,j_l_g =mano_left(gt_left,shape)           #   左手真实关节点
-    _,j_r_g = mano_right(gt_right,shape)        #   右手真实关节点
+    _1,j_l_p =mano_left(pre_left,shape)          #  左手预测关节点
+    _2,j_r_p =mano_right(pre_right,shape)        #   右手预测关节点
+    _3,j_l_g =mano_left(gt_left,shape)           #   左手真实关节点
+    _4,j_r_g = mano_right(gt_right,shape)        #   右手真实关节点
     # if vis  :
     #     os.makedies()
+    if vis :
+        os.makedirs("plts/right/")
+        os.makedirs("plts/left/")
 
+        demo.batch_display_hand({
+    'verts': _1,
+    'joints': j_l_p
+},
+                  mano_faces=mano_left.th_faces)
+        
+        demo.batch_display_hand({
+    'verts': _2,
+    'joints': j_r_p
+},title = 'right',
+                  mano_faces=mano_right.th_faces)
+        
+        
     predict_position = torch.concat((j_l_p,j_r_p),axis = 0).reshape(-1,3)    # 预测手部关节点
     gt_position = torch.concat((j_l_g,j_r_g),axis = 0).reshape(-1,3)         # 真实手部关节点
 

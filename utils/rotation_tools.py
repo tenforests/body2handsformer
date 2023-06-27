@@ -24,8 +24,7 @@
 
 import numpy as np
 import torch
-from utils import tgm_conversion as tgm
-#import tgm_conversion as tgm
+import utils.tgm_conversion as tgm
 from torch.nn import functional as F
 
 

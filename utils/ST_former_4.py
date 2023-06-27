@@ -22,7 +22,7 @@ from PIL import Image,ImageDraw
 
 class ST_former(nn.Module):
 	def __init__(self, hand_input=1024, body_input=6*6, t_out_dim=512, s_out_dim=64,
-		        nhead = 8, dropout = 0.2, batch_size=10, seq_length =32, 
+		        nhead = 8, dropout = 0.2,
 				T_num_encoder_layers = 6, S_num_encoder_layers = 6, 
 				S_feedforward_dim = 128, T_feedforward_dim = 1024):
 		super(ST_former, self).__init__()
@@ -32,14 +32,12 @@ class ST_former(nn.Module):
 		self.t_out_dim = t_out_dim
 		self.s_out_dim = s_out_dim
 		self.dropout = dropout
-		self.batch_size = batch_size
-		self.seq_length = seq_length
 		self.S_num_encoder_layers = S_num_encoder_layers
 		self.T_num_encoder_layers = T_num_encoder_layers
 		self.S_feedforward_dim = S_feedforward_dim
 		self.T_feedforward_dim = T_feedforward_dim
 	
-	def build_net(self):
+	def build_net(self,seq_length):
 		self.T_input_embdding_hand = nn.Sequential(nn.Dropout(self.dropout),
 			nn.Linear(self.hand_input, self.t_out_dim//2),
 			nn.LeakyReLU(0.2, True),
@@ -61,7 +59,7 @@ class ST_former(nn.Module):
 		#class_token的定义
 		self.class_token = nn.Parameter(torch.randn(1,self.s_out_dim))
 		# 定义可学习的位置编码
-		self.T_pos_embed = nn.Parameter(torch.randn(self.seq_length, self.t_out_dim))
+		self.T_pos_embed = nn.Parameter(torch.randn(seq_length, self.t_out_dim))
 		self.S_pos_embed = nn.Parameter(torch.randn(8,self.s_out_dim))
 		# 定义编码层
 		self.T_encoder_layer = nn.TransformerEncoderLayer(d_model=self.t_out_dim, nhead=self.nhead,
@@ -119,10 +117,12 @@ class ST_former(nn.Module):
 		return res #n*f*(8*64)
 	
 	def forward(self,hand_input,body_input):                              # n*f*(1024)   n*f*(6*6)
-		#print("HERR:",hand_input.shape,body_input.shape)
+		print("HERR:",hand_input.shape,body_input.shape)
+		self.batch_size=hand_input.shape[0]
+		self.seq_length=hand_input.shape[1]
 		t_out = self.Temporal_forward(hand_input,body_input)              # n*f*512
 		s_out = self.Spatial_forward(hand_input,body_input)            			  # n*f*6*128   没有任何用处
-		 #print("size:",s_out.shape)
+		print("size:",s_out.shape,t_out.shape)
 		_out = torch.concat((s_out,t_out),2)    			   				#  n*f*(512+64)
 		_out = self.regression_head(_out)                            	  #  n*f*(42*6)
 		#print("size:",_out.shape)
@@ -134,7 +134,7 @@ class ST_former(nn.Module):
 
 # S = ST_former()
 # S.build_net()
-# hand = torch.randn((10,32,1024))
-# body = torch.randn((10,32,6*6))
+# hand = torch.randn((224,16,1024))
+# body = torch.randn((224,16,6*6))
 # x = S.forward(hand,body)
 # print(x.shape)

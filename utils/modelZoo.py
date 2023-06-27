@@ -341,7 +341,7 @@ class body2handformer(nn.Module):
 				 dim_feedforward = dim_feedforward,batch_first = True,dropout=dropout)
 		# 定义 regression 
 		# now there output 1/64 token 512 dim[nx1/64x512]
-		# we should output 42*3 = 252
+		# we should output 42*6 = 252
 		self.out = nn.Sequential(nn.Dropout(dropout),
 				nn.Linear(feature_out_dim, hand_dim))
 				# nn.LeakyReLU(0.2, True),

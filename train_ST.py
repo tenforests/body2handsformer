@@ -6,11 +6,15 @@ import torch
 from torch import nn
 from torch.autograd import Variable
 import torchvision
+import matplotlib.pyplot as plt
 import utils.modelZoo as modelZoo
 import utils.ST_former_4 as ST_former
 from utils.modelZoo import PositionalEncoding
 from utils.load_utils import *
+from utils.mertic import *
 import einops
+from torch.utils.tensorboard import SummaryWriter
+
 
 DATA_PATHS = {
         #'video_data/Oliver/train/':1,
@@ -24,11 +28,14 @@ DATA_PATHS = {
         #'video_data/Conan/train/':6,
         }
 
-
 #######################################################
 ## main training function
 #######################################################
+writer = SummaryWriter('./plot/log/model_6')
 def main(args):
+    # file_name=args.model_path.split('/')[-1]
+    # if not os.path.exists('./plot/log/{}'.format(file_name)):
+    #     os.mkdir('./plot/log/{}'.format(file_name))
     ## variables
     learning_rate = args.learning_rate
     pipeline = args.pipeline
@@ -49,10 +56,10 @@ def main(args):
     ## set up generator model
     args.model = 'ST_former'
     generator = getattr(ST_former,args.model)(hand_input=args.hand_input, body_input=args.body_input, t_out_dim=args.t_out_dim, s_out_dim=args.s_out_dim,
-		        nhead = args.nhead, dropout = args.dropout, batch_size=args.batch_size, seq_length =args.seq_length, 
+		        nhead = args.nhead, dropout = args.dropout, 
 				T_num_encoder_layers = args.T_num_decoder_layers, S_num_encoder_layers = args.S_num_decoder_layers,
                 S_feedforward_dim = args.S_feedforward_dim,T_feedforward_dim = args.T_feedforward_dim)
-    generator.build_net()
+    generator.build_net(args.seq_length)
     # pretrain_model = args.checkpoint
     # loaded_state = torch.load(pretrain_model, map_location=lambda storage, loc: storage)
     # generator.load_state_dict(loaded_state['state_dict'], strict=False)
@@ -83,6 +90,13 @@ def main(args):
     ## DONE: load data from saved files
     # summary(generator,[(36, 64),(64, 1024)],batch_size=1)
     ## training job
+    train_X=torch.from_numpy(train_X)
+    train_Y=torch.from_numpy(train_Y)
+    test_X=torch.from_numpy(test_X)
+    test_Y=torch.from_numpy(test_Y)
+    test_ims=torch.from_numpy(test_ims)
+    train_ims=torch.from_numpy(train_ims)
+    
     kld_weight = 0.05
     prev_save_epoch = 0
     patience = 20
@@ -99,7 +113,11 @@ def main(args):
         # else:
         #     print('tg')
         train_generator(args, rng, generator, discriminator, reg_criterion, gan_criterion, g_optimizer, train_X, train_Y, train_ims=train_ims)
-        currBestLoss = val_generator(args, generator, discriminator, reg_criterion,d_optimizer, g_optimizer, test_X, test_Y, currBestLoss, test_ims=test_ims)
+        currBestLoss,MPJPE,MPJRE = val_generator(args, generator, discriminator, reg_criterion,d_optimizer, g_optimizer, test_X, test_Y, currBestLoss, test_ims=test_ims)   
+        writer.add_scalar('L1',currBestLoss, epoch+1)
+        writer.add_scalar("MPJPE",MPJPE,epoch+1)
+        writer.add_scalar("MPJRE",MPJRE,epoch+1)
+    writer.close()
 
 
 
@@ -117,7 +135,7 @@ def load_data(args, rng):
     ## load from external files
     for key, value in DATA_PATHS.items():
         key = os.path.join(args.base_path, key)
-        print("Hello:",key)
+        #print("Hello:",key)
         # p0 身体 p1 手部特征 paths 路径
         curr_p0, curr_p1, curr_paths, _ = load_windows(key, args.pipeline, require_image=args.require_image, frame=args.seq_length)
         if gt_windows is None:
@@ -160,7 +178,9 @@ def load_data(args, rng):
     test_Y = np.swapaxes(test_Y, 1, 2).astype(np.float32)
 
     body_mean_X, body_std_X, body_mean_Y, body_std_Y = calc_standard(train_X, train_Y, args.pipeline)
-    np.savez_compressed(args.model_path + '{}{}_preprocess_core.npz'.format(args.tag, args.pipeline), 
+    args.body_mean_Y = body_mean_Y
+    args.body_std_Y = body_std_Y
+    np.savez_compressed(args.model_path + '/{}{}_preprocess_core.npz'.format(args.tag, args.pipeline), 
             body_mean_X=body_mean_X, body_std_X=body_std_X,
             body_mean_Y=body_mean_Y, body_std_Y=body_std_Y) 
 
@@ -250,13 +270,13 @@ def train_generator(args, rng, generator, discriminator, reg_criterion, gan_crit
         idxStart = bi * args.batch_size
         inputData_np = train_X[idxStart:(idxStart + args.batch_size), :, :]
         outputData_np = train_Y[idxStart:(idxStart + args.batch_size), :, :]
-        inputData = Variable(torch.from_numpy(inputData_np)).to(args.device)
-        outputGT = Variable(torch.from_numpy(outputData_np)).to(args.device)
+        inputData = Variable(inputData_np).to(args.device)
+        outputGT = Variable(outputData_np).to(args.device)
         #print("train:",inputData_np.shape)
         imsData = None
         if args.require_image:
             imsData_np = train_ims[idxStart:(idxStart + args.batch_size), :, :]
-            imsData = Variable(torch.from_numpy(imsData_np)).to(args.device)
+            imsData = Variable(imsData_np).to(args.device)
         ## DONE setting batch data
         #print("shape:",inputData.shape,outputGT.shape,imsData.shape)
         output = generator(body_input=inputData, hand_input=imsData)
@@ -287,6 +307,7 @@ def train_generator(args, rng, generator, discriminator, reg_criterion, gan_crit
 ## validating generator function
 def val_generator(args, generator, discriminator, reg_criterion,d_optimizer, g_optimizer, test_X, test_Y, currBestLoss, test_ims=None):
     testLoss = 0
+    test_MPJPE,test_MPJRE=0,0
     generator.eval()
     # discriminator.eval()
     batchinds = np.arange(test_X.shape[0] // args.batch_size)
@@ -296,33 +317,47 @@ def val_generator(args, generator, discriminator, reg_criterion,d_optimizer, g_o
         idxStart = bi * args.batch_size
         inputData_np = test_X[idxStart:(idxStart + args.batch_size), :, :]
         outputData_np = test_Y[idxStart:(idxStart + args.batch_size), :, :]
-        inputData = Variable(torch.from_numpy(inputData_np)).to(args.device)
-        outputGT = Variable(torch.from_numpy(outputData_np)).to(args.device)
+        inputData = Variable(inputData_np).to(args.device)
+        outputGT = Variable(outputData_np).to(args.device)
 
         imsData = None
         if args.require_image:
             imsData_np = test_ims[idxStart:(idxStart + args.batch_size), :, :]
-            imsData = Variable(torch.from_numpy(imsData_np)).to(args.device)
+            imsData = Variable(imsData_np).to(args.device)
         ## DONE setting batch data
-        
-        output = generator(body_input=inputData, hand_input=imsData)
-        output = output.contiguous().view(-1, output.size(-1))
-        outputGT = outputGT.contiguous().view(-1, outputGT.size(-1))
+        with torch.no_grad():
+            output = generator(body_input=inputData, hand_input=imsData).detach()
+        output = output.contiguous().view(-1, output.size(-1)).to(args.device)
+        outputGT = outputGT.contiguous().view(-1, outputGT.size(-1)).to(args.device)
         #print(output.shape,outputGT.shape)
         g_loss = reg_criterion(output, outputGT)
-        testLoss += g_loss.item() * args.batch_size
+        #print("output shape:",output.shape,outputGT.shape)
+        MPJRE_loss,MPJPE_loss = evaluate_prediction(sample=output,gt_sample=outputGT,device=args.device,mean=torch.from_numpy(args.body_mean_Y).to(args.device),
+                                                    std=torch.from_numpy(args.body_std_Y).to(args.device),already_std=False,is_adam=True,reverse=True)
+        #print("MPJPE.shape:",MPJPE_loss,MPJRE_loss)
+        testLoss += g_loss.item()
+        test_MPJPE +=MPJPE_loss.item()
+        test_MPJRE += MPJRE_loss.item()
+        if bii%10==0:
+            writer.add_scalar('L1_iteration',g_loss.item(), args.epoch*totalSteps+bii)
+            writer.add_scalar("MPJPE_iteration",MPJPE_loss.item(),args.epoch*totalSteps+bii)
+            writer.add_scalar("MPJRE_iteration",MPJRE_loss.item(),args.epoch*totalSteps+bii)
 
-    testLoss /= totalSteps * args.batch_size
-    print('Epoch [{}/{}], Step [{}/{}], Loss: {:.4f}, Perplexity: {:5.4f}'.format(args.epoch, args.num_epochs, bii, totalSteps, 
+    testLoss /= totalSteps
+    test_MPJPE /= totalSteps
+    test_MPJRE /= totalSteps
+    print('Epoch [{}/{}], Step [{}/{}], Loss: {:.3f}, Perplexity: {:5.3f}, MPJPE:{:.3f}, MPJRE:{:.3f}'.format(args.epoch, args.num_epochs, bii, totalSteps, 
                                                                                             testLoss, 
-                                                                                            np.exp(testLoss)))
+                                                                                            np.exp(testLoss),test_MPJPE,test_MPJRE))
     print('----------------------------------')
     # if testLoss < currBestLoss:
     prev_save_epoch = args.epoch
     checkpoint = {'epoch': args.epoch,
                     'state_dict': generator.state_dict(),
                     'g_optimizer': g_optimizer.state_dict()}
-    fileName = args.model_path + '/{}{}_checkpoint_e{}_loss{:.4f}.pth'.format(args.tag, args.pipeline, args.epoch, testLoss)
+    fileName = args.model_path + '/checkpoint_e{}_l{:.4f}_P{:.4f}_R{:.4f}.pth'.format(args.epoch, testLoss,test_MPJPE,test_MPJRE)
+    if not os.path.exists(args.model_path):
+        os.mkdir(args.model_path)
     torch.save(checkpoint, fileName)
     # checkpoint2 = {'epoch': args.epoch,
     #                 'state_dict': discriminator.state_dict(),
@@ -331,14 +366,14 @@ def val_generator(args, generator, discriminator, reg_criterion,d_optimizer, g_o
     # torch.save(checkpoint2,fileName2)
     currBestLoss = testLoss
 
-    return currBestLoss
+    return currBestLoss,test_MPJPE,test_MPJRE
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--base_path', type=str, required=True, help='path to the directory where the data files are stored')
     parser.add_argument('--pipeline', type=str, default='arm2wh', help='pipeline specifying which input/output joints to use')
-    parser.add_argument('--num_epochs', type=int, default=100, help='number of training epochs')
+    parser.add_argument('--num_epochs', type=int, default=50, help='number of training epochs')
     parser.add_argument('--batch_size', type=int, default=64, help='batch size for training')
     parser.add_argument('--learning_rate', type=float, default=4e-3, help='learning rate for training G and D')
     parser.add_argument('--require_image', action='store_true', help='use additional image feature or not')

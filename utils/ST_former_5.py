@@ -15,7 +15,7 @@ from torchvision.utils import save_image
 from torchvision.datasets import MNIST
 import os
 from PIL import Image,ImageDraw 
-
+# 仅测试空间编码器部分效果的实验，和4的区别是没有用时间编码器
 #############################################################
 #############  Temporal-Spatial  Transformer  ###############    
 #############################################################

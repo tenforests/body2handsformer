@@ -14,3 +14,17 @@ testmodel/
 mano/
 manopth/
 manopth
+*.sh
+checkpoint/
+plot/
+manopth/
+mano/
+*.pyc
+*.mp4
+*.png
+*.jpg
+*.npz
+*.pkl
+*.txt
+manopth
+

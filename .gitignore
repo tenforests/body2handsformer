@@ -3,3 +3,10 @@
 *.log
 *.pth
 *.npy
+*.mp4
+*.png
+*.jpg
+*.npz
+*.pkl
+*.txt
+

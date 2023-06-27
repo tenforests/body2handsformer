@@ -1,5 +1,6 @@
 # Copyright (c) Facebook, Inc. and its affiliates.
 import argparse
+import math
 import os
 import json
 import numpy as np
@@ -7,9 +8,10 @@ import torch
 import torchvision
 from torch import nn
 from torch.autograd import Variable
-
+from torch.utils.tensorboard import SummaryWriter
 import utils.modelZoo as modelZoo
 from utils.load_utils import *
+from utils.mertic import evaluate_prediction
 
 def main(args):
     ## variable initializations
@@ -34,6 +36,7 @@ def main(args):
     model = model.eval()
     model.cuda()
     criterion = nn.MSELoss()
+    l1loss = nn.L1Loss()
     ## DONE set up model/ load pretrained model
 
 
@@ -68,9 +71,8 @@ def main(args):
         imsData = Variable(torch.from_numpy(test_ims)).cuda()
 
     output = model(inputData, image_=imsData) 
-    error = criterion(output, outputGT).data
-
-    print(">>> TOTAL ERROR: ", error)
+    mseerror = criterion(output, outputGT).data
+    l1error = l1loss(output,outputGT).data
     print('----------------------------------')
     ## DONE pass loaded data into training
 
@@ -82,20 +84,22 @@ def main(args):
     output_gt = output_gt * body_std_Y + body_mean_Y
     output_np = np.swapaxes(output_np, 1, 2).astype(np.float32)
     output_gt = np.swapaxes(output_gt, 1, 2).astype(np.float32)
-    save_results(test_Y_paths, output_np, args.pipeline, args.base_path, tag=args.tag+str(error))
+    output_np = torch.tensor(output_np).to(args.device)
+    output_gt = torch.tensor(output_gt).to(args.device)
+    mpjre,mpjpe = evaluate_prediction(output,outputGT,True,False,True,body_mean_Y,body_std_Y,False)
+    # save_results(test_Y_paths, output_np, args.pipeline, args.base_path, tag=args.tag+str(error))
     ## DONE preparing output for saving
-
+    print('mseloss:%.5f,l1loss:%.5f,mpjre:%.5f,mpjre_degree:%.5f,mpjpe_mm:%.5f'% (mseerror,l1error,mpjre,mpjre* 360.0 / (2 * math.pi),mpjpe))
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--checkpoint', type=str, required=True, help='path to checkpoint file (pretrained model)')
     parser.add_argument('--base_path', type=str, required=True, help='absolute path to the base directory where all of the data is stored')
     parser.add_argument('--data_dir', type=str, required=True, help='path to test data directory')
-
     parser.add_argument('--pipeline', type=str, default='arm2wh', help='pipeline specifying which input/output joints to use')
     parser.add_argument('--require_image', action='store_true', help='step size for prining log info')
     parser.add_argument('--tag', type=str, default='', help='prefix for naming purposes')
-
+    parser.add_argument('--device', type=str, default='cuda:0', help='change device')
     args = parser.parse_args()
     print(args)
     main(args)

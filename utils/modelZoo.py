@@ -340,12 +340,12 @@ class body2handformer(nn.Module):
 				 dim_feedforward = dim_feedforward,batch_first = True,dropout=dropout)
 		# 定义 regression 
 		# now there output 1/64 token 512 dim[nx1/64x512]
-		# we should output 42*3 = 252
+		# we should output 42*6 = 252
 		self.out = nn.Sequential(nn.Dropout(dropout),
 				nn.Linear(feature_out_dim, hand_dim))
 				# nn.LeakyReLU(0.2, True),
 				# nn.BatchNorm1d(feature_out_dim, momentum=0.01))
-	def forward(self,seq_input,hand_input,img_input=None):
+	def forward(self,seq_input,hand_input=None,img_input=None,inference=False):
 		# seq
 		x = self.seq_embdding(seq_input)
 		# img
@@ -355,13 +355,18 @@ class body2handformer(nn.Module):
 			x = torch.concat((x,img_emd),dim = 2)
 		# hand seq 64->63
 		x = self.pos_embdding.forward(x)
-		hand_input_in = hand_input[:,:hand_input.shape[1]-1,:]
+		if not inference :
+			hand_input_in = hand_input[:,:hand_input.shape[1]-1,:]
+		else:
+			hand_input_in = hand_input
+
 		batch_size = seq_input.shape[0]
 		begin_token = self.begin_token.expand(batch_size, -1, -1)
 		hand_emb = torch.concat((begin_token,hand_input_in),dim=1)
 		hand_emb = self.hand_embdding(hand_emb)
 		# add begin token
 		hand_emb = self.pos_embdding.forward(hand_emb)
+
 
 		x = self.transformer.forward(x,hand_emb,memory_mask=self.mask_mem,tgt_mask=self.mask_output)
 		return x

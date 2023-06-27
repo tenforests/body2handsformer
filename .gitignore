@@ -4,3 +4,8 @@
 *.pth
 *.npy
 *.sh
+checkpoint/
+plot/
+manopth/
+mano/
+*.pyc
